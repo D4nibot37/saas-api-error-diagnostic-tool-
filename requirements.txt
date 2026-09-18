@@ -1,0 +1,4 @@
+# Core dependency for the optional --live-check feature (src/live_check.py).
+# The main diagnostic engine (src/error_catalog.py, src/diagnostic_tool.py)
+# uses only the Python standard library and works without this installed.
+requests>=2.31.0
