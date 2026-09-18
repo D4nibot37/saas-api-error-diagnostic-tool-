@@ -1,0 +1,210 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "Catalog of common API errors in SaaS/CRM environments (Salesforce, HubSpot, and generic REST APIs). Used by the diagnostic engine to match incoming errors to a known pattern.",
+    "last_updated": "2026-09-18"
+  },
+  "errors": [
+    {
+      "id": "ERR-400-VALIDATION",
+      "http_code": 400,
+      "error_type": "validation",
+      "name": "Bad Request - Data Validation Error",
+      "systems": ["Salesforce", "HubSpot", "Generic REST API"],
+      "keywords": ["bad request", "validation", "invalid field", "missing required field", "malformed", "invalid_field_value", "invalid value"],
+      "probable_causes": [
+        "Missing required field(s) in the request payload",
+        "Invalid data type (e.g. a string sent where a number or date is expected)",
+        "Malformed JSON syntax in the request body",
+        "A field value violates a picklist/dropdown constraint (e.g. invalid status value)",
+        "Date format mismatch (e.g. MM/DD/YYYY sent instead of ISO 8601)"
+      ],
+      "resolution_steps": [
+        "Read the API's error response body carefully - it usually names the exact field that failed",
+        "Validate the payload against the endpoint's schema before sending it",
+        "Confirm the required fields for that object/record type in the provider's API documentation",
+        "Normalize date and number formats to what the API expects (usually ISO 8601 for dates)",
+        "Re-send the request with the corrected payload"
+      ],
+      "automated_action": "validate_payload",
+      "severity": "low-medium",
+      "avg_resolution_time_min": 10,
+      "runbook": "docs/runbook_400_bad_request.md"
+    },
+    {
+      "id": "ERR-401-TOKEN",
+      "http_code": 401,
+      "error_type": "authentication",
+      "name": "Unauthorized - Expired or Invalid Token",
+      "systems": ["Salesforce", "HubSpot", "Generic REST API"],
+      "keywords": ["unauthorized", "invalid token", "expired token", "authentication failed", "invalid_grant", "session expired", "session_id_invalid"],
+      "probable_causes": [
+        "The access token has expired (OAuth 2.0 access tokens typically expire in 1-2 hours)",
+        "The token was revoked manually, or invalidated by a user password change",
+        "The refresh token has also expired or was revoked",
+        "The integration's credentials (Client ID / Client Secret) are incorrect",
+        "A sandbox token is being used against production, or vice versa"
+      ],
+      "resolution_steps": [
+        "Check the expiration timestamp of the current access token",
+        "Run the OAuth refresh token flow to obtain a new access token",
+        "If the refresh token has also failed, re-authenticate with the full OAuth flow",
+        "Confirm the integration's credentials have not been rotated or revoked in the admin panel",
+        "Verify the request is pointed at the correct environment (sandbox vs production)"
+      ],
+      "automated_action": "refresh_token",
+      "severity": "high",
+      "avg_resolution_time_min": 5,
+      "runbook": "docs/runbook_401_unauthorized.md"
+    },
+    {
+      "id": "ERR-403-PERMISSIONS",
+      "http_code": 403,
+      "error_type": "authorization",
+      "name": "Forbidden - Insufficient Permissions",
+      "systems": ["Salesforce", "HubSpot", "Generic REST API"],
+      "keywords": ["forbidden", "insufficient permission", "insufficient_scope", "access denied", "not authorized to perform", "permission denied"],
+      "probable_causes": [
+        "The API user/integration lacks permission for this object or action (e.g. a read-only user attempting a write)",
+        "The connected app's OAuth scopes do not include the required permission",
+        "IP restrictions on the org are blocking requests from this server's IP address",
+        "The integration user's profile or permission set was recently changed or revoked",
+        "Attempting to access a record outside the user's sharing rules (record-level security)"
+      ],
+      "resolution_steps": [
+        "Identify the exact permission required for the failing action (object CRUD + field-level security)",
+        "Review the integration user's profile / permission set (Salesforce) or the app's granted scopes (HubSpot)",
+        "Confirm the request's origin IP is allow-listed if IP restrictions are enabled",
+        "Escalate to a Salesforce/HubSpot administrator if a permission change is required",
+        "Re-authenticate if OAuth scopes were recently updated, since the existing token may need to be reissued"
+      ],
+      "automated_action": null,
+      "severity": "medium-high",
+      "avg_resolution_time_min": 20,
+      "runbook": "docs/runbook_403_forbidden.md"
+    },
+    {
+      "id": "ERR-404-NOTFOUND",
+      "http_code": 404,
+      "error_type": "not_found",
+      "name": "Not Found - Record or Resource Missing",
+      "systems": ["Salesforce", "HubSpot", "Generic REST API"],
+      "keywords": ["not found", "no rows found", "resource not found", "record not found", "invalid id", "the requested resource does not exist"],
+      "probable_causes": [
+        "The referenced record ID no longer exists (it was deleted or merged into another record)",
+        "A typo or incorrect ID/URL in the request (wrong object API name or endpoint version)",
+        "The record exists in a different environment than the one being queried (sandbox vs production)",
+        "The record is not visible to the API user due to sharing rules (some APIs return 404 instead of 403 for hidden records)"
+      ],
+      "resolution_steps": [
+        "Confirm the record ID is correct and still exists in the target environment",
+        "Verify the endpoint URL and API version match the provider's current documentation",
+        "Check whether the record was recently deleted, merged, or archived",
+        "If sharing rules might be hiding the record, confirm with an admin whether it is actually a permissions issue",
+        "Confirm you are pointing at the correct environment (production vs sandbox/test account)"
+      ],
+      "automated_action": null,
+      "severity": "low",
+      "avg_resolution_time_min": 8,
+      "runbook": "docs/runbook_404_not_found.md"
+    },
+    {
+      "id": "ERR-429-RATELIMIT",
+      "http_code": 429,
+      "error_type": "rate_limit",
+      "name": "Too Many Requests - Rate Limit Exceeded",
+      "systems": ["Salesforce", "HubSpot", "Generic REST API"],
+      "keywords": ["rate limit", "too many requests", "request limit exceeded", "throttled", "quota exceeded", "429"],
+      "probable_causes": [
+        "The integration exceeded the API's request-per-second or request-per-day limit",
+        "A bulk sync or import job is firing requests without batching or throttling",
+        "Multiple integrations/processes sharing the same API credentials are competing for the same quota",
+        "No backoff strategy is implemented, so repeated immediate retries make the limit worse"
+      ],
+      "resolution_steps": [
+        "Read the Retry-After header (or the provider's equivalent) and wait the indicated amount of time",
+        "Implement exponential backoff with jitter for retries instead of immediate re-requests",
+        "Batch requests where the API supports bulk endpoints (e.g. Salesforce Bulk API, HubSpot batch endpoints)",
+        "Review current usage against the plan's limits and request a rate limit increase from the provider if justified",
+        "Add request throttling/queueing on the integration side to stay under the limit proactively"
+      ],
+      "automated_action": "retry_with_backoff",
+      "severity": "medium",
+      "avg_resolution_time_min": 5,
+      "runbook": "docs/runbook_429_rate_limit.md"
+    },
+    {
+      "id": "ERR-500-SERVER",
+      "http_code": 500,
+      "error_type": "server_error",
+      "name": "Internal Server Error - Provider-Side Failure",
+      "systems": ["Salesforce", "HubSpot", "Generic REST API"],
+      "keywords": ["internal server error", "server error", "unexpected error", "service unavailable", "500"],
+      "probable_causes": [
+        "Temporary issue on the provider's side (outage, deployment, degraded service)",
+        "An edge case in the request triggered an unhandled error server-side",
+        "Timeout on a very large or complex request"
+      ],
+      "resolution_steps": [
+        "Check the provider's public status page for ongoing incidents",
+        "Retry with exponential backoff, since 5xx errors are often transient",
+        "If the error persists, open a support ticket with the provider including the request ID and timestamp",
+        "Reduce payload size or complexity if the error correlates with large batch requests"
+      ],
+      "automated_action": "retry_with_backoff",
+      "severity": "medium",
+      "avg_resolution_time_min": 15,
+      "runbook": "docs/runbook_500_server_error.md"
+    },
+    {
+      "id": "ERR-SYNC-DUPLICATE",
+      "http_code": null,
+      "error_type": "synchronization",
+      "name": "Sync Error - Duplicate Record Conflict",
+      "systems": ["HubSpot-Salesforce Sync", "Generic CRM Sync Tool"],
+      "keywords": ["duplicate contact", "duplicate record", "duplicate lead", "already exists", "sync conflict", "duplicate detected", "duplicate found"],
+      "probable_causes": [
+        "The same contact/lead was created independently in both systems before the sync connection existed",
+        "The matching field used for deduplication (usually email) has inconsistent formatting between systems (case, whitespace, aliases)",
+        "Deduplication rules are misconfigured or disabled in the sync tool",
+        "A record was merged in one system but the merge has not yet propagated to the other system"
+      ],
+      "resolution_steps": [
+        "Identify the matching/dedupe key configured in the sync tool (usually email) and confirm it is populated and normalized in both systems",
+        "Manually review and merge the duplicate records, keeping the one with more complete/authoritative data",
+        "Check the integration's sync logs for the specific duplicate/conflict error entries",
+        "Adjust the deduplication rules in the sync configuration to prevent recurrence",
+        "Re-run the sync for the affected records once the merge is complete"
+      ],
+      "automated_action": null,
+      "severity": "medium",
+      "avg_resolution_time_min": 25,
+      "runbook": "docs/runbook_sync_duplicate_records.md"
+    },
+    {
+      "id": "ERR-SYNC-FIELDMAP",
+      "http_code": null,
+      "error_type": "synchronization",
+      "name": "Sync Error - Field Mapping Mismatch",
+      "systems": ["HubSpot-Salesforce Sync", "Generic CRM Sync Tool"],
+      "keywords": ["field mapping", "mapping error", "sync failed", "picklist value not found", "field not found", "invalid mapping", "mapping broken"],
+      "probable_causes": [
+        "A field was renamed or removed in one system (e.g. a custom Salesforce field), breaking the mapping in the sync tool",
+        "Data type mismatch between mapped fields (e.g. a HubSpot picklist value that has no matching Salesforce picklist option)",
+        "A required field on the destination system has no source field mapped, so the sync fails validation on write",
+        "Field-level permissions block the integration user from writing to a mapped field"
+      ],
+      "resolution_steps": [
+        "Open the sync tool's field mapping configuration and look for mappings flagged as broken or invalid",
+        "Confirm the field still exists in both systems with matching or compatible data types",
+        "Add any missing picklist/dropdown values on the destination side, or set a default value in the mapping",
+        "Verify the integration user has field-level write access to every mapped field",
+        "Re-sync the affected records once the mapping is fixed"
+      ],
+      "automated_action": null,
+      "severity": "medium-high",
+      "avg_resolution_time_min": 30,
+      "runbook": "docs/runbook_sync_field_mapping.md"
+    }
+  ]
+}
